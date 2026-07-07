@@ -1,0 +1,66 @@
+name: Database Backup
+
+on:
+  # Run daily at 02:00 AM Thailand time (UTC+7) = 19:00 UTC
+  schedule:
+    - cron: '0 19 * * *'
+  # Allow manual trigger from GitHub Actions tab
+  workflow_dispatch:
+  # Triggered from the web app via Supabase Edge Function
+  repository_dispatch:
+    types: [database-backup]
+
+jobs:
+  backup:
+    name: Backup Supabase Database
+    runs-on: ubuntu-latest
+
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+      BACKUP_RETENTION_DAYS: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Create backup directory
+        run: mkdir -p backups
+
+      - name: Dump database with pg_dump
+        run: |
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          BACKUP_FILE="backups/gasstation-backup-${TIMESTAMP}.sql"
+          echo "BACKUP_FILE=${BACKUP_FILE}" >> $GITHUB_ENV
+          echo "BACKUP_GZ=${BACKUP_FILE}.gz" >> $GITHUB_ENV
+          echo "Creating backup: ${BACKUP_FILE}"
+          pg_dump "${DATABASE_URL}" --clean --if-exists --no-owner --no-privileges --verbose > "${BACKUP_FILE}"
+
+      - name: Compress backup
+        run: |
+          gzip -9 "${BACKUP_FILE}"
+          ls -lh "${BACKUP_GZ}"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: pip install requests
+
+      - name: Upload backup to Supabase Storage
+        run: python scripts/upload-backup.py "${BACKUP_GZ}"
+
+      - name: Upload backup artifact to GitHub (fallback)
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-backup-${{ github.run_id }}
+          path: backups/*.gz
+          retention-days: ${{ env.BACKUP_RETENTION_DAYS }}
