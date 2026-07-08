@@ -129,22 +129,29 @@ interface BackupResponse {
   path?: string;
   size?: number;
   url?: string;
+  notifiedCount?: number;
+  notifyError?: string;
 }
 
 async function notifyAdminsAndManagers(
   supabase: SupabaseClient,
   filename: string,
   triggeredBy?: string
-): Promise<void> {
+): Promise<{ count: number; error?: string }> {
   try {
     const { data: admins, error } = await supabase
       .from('users')
       .select('id')
       .in('role', ['admin', 'manager']);
 
-    if (error || !admins || admins.length === 0) {
+    if (error) {
       console.error('Could not fetch admins/managers for notification:', error);
-      return;
+      return { count: 0, error: error.message };
+    }
+
+    if (!admins || admins.length === 0) {
+      console.error('No admins/managers found for notification');
+      return { count: 0, error: 'No admins/managers found' };
     }
 
     const thaiTime = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
@@ -154,6 +161,7 @@ async function notifyAdminsAndManagers(
     }`;
 
     const notifications = admins.map((u) => ({
+      id: crypto.randomUUID(),
       userid: u.id,
       title,
       message,
@@ -165,9 +173,14 @@ async function notifyAdminsAndManagers(
     const { error: insertError } = await supabase.from('notifications').insert(notifications);
     if (insertError) {
       console.error('Notification insert error:', insertError);
+      return { count: 0, error: insertError.message };
     }
+
+    return { count: notifications.length };
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error('Notify admins/managers error:', err);
+    return { count: 0, error: message };
   }
 }
 
@@ -257,7 +270,11 @@ serve(async (req) => {
       console.error('Signed URL error:', signedUrlError);
     }
 
-    await notifyAdminsAndManagers(supabase, filename, triggeredBy);
+    const { count: notifiedCount, error: notifyError } = await notifyAdminsAndManagers(
+      supabase,
+      filename,
+      triggeredBy
+    );
 
     return new Response(
       JSON.stringify({
@@ -267,6 +284,8 @@ serve(async (req) => {
         path: uploadData.path,
         size: sqlDump.length,
         url: signedUrlData?.signedUrl,
+        notifiedCount,
+        notifyError,
       } as BackupResponse),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
