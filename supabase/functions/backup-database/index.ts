@@ -131,6 +131,46 @@ interface BackupResponse {
   url?: string;
 }
 
+async function notifyAdminsAndManagers(
+  supabase: SupabaseClient,
+  filename: string,
+  triggeredBy?: string
+): Promise<void> {
+  try {
+    const { data: admins, error } = await supabase
+      .from('users')
+      .select('id')
+      .in('role', ['admin', 'manager']);
+
+    if (error || !admins || admins.length === 0) {
+      console.error('Could not fetch admins/managers for notification:', error);
+      return;
+    }
+
+    const thaiTime = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+    const title = 'สำรองข้อมูลสำเร็จ';
+    const message = `สำรองข้อมูล ${filename} เสร็จสมบูรณ์ เมื่อ ${thaiTime}${
+      triggeredBy ? ` โดย ${triggeredBy}` : ' (อัตโนมัติ)'
+    }`;
+
+    const notifications = admins.map((u) => ({
+      userid: u.id,
+      title,
+      message,
+      type: 'success',
+      read: false,
+      createdat: new Date().toISOString(),
+    }));
+
+    const { error: insertError } = await supabase.from('notifications').insert(notifications);
+    if (insertError) {
+      console.error('Notification insert error:', insertError);
+    }
+  } catch (err) {
+    console.error('Notify admins/managers error:', err);
+  }
+}
+
 serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -145,6 +185,7 @@ serve(async (req) => {
 
     // Allow cron jobs with secret key
     const isCronJob = backupSecret && expectedSecret && backupSecret === expectedSecret;
+    let triggeredBy: string | undefined;
 
     if (!isCronJob) {
       if (!token) {
@@ -182,6 +223,8 @@ serve(async (req) => {
           { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+
+      triggeredBy = userData.email as string;
     }
 
     const sqlDump = await generateSqlDump(supabase);
@@ -213,6 +256,8 @@ serve(async (req) => {
     if (signedUrlError) {
       console.error('Signed URL error:', signedUrlError);
     }
+
+    await notifyAdminsAndManagers(supabase, filename, triggeredBy);
 
     return new Response(
       JSON.stringify({
