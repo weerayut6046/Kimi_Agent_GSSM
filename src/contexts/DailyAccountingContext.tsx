@@ -25,6 +25,7 @@ export const DailyAccountingProvider: React.FC<{ children: ReactNode }> = ({ chi
   const [isLoading, setIsLoading] = useState(true);
   const isInitialized = useRef(false);
   const realtimeDebounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const dailyAccountsRef = useRef<DailyAccounting[]>([]);
 
   const currentFuelPrice = useMemo(() => {
     if (fuelPrices.length === 0) return null;
@@ -58,6 +59,9 @@ export const DailyAccountingProvider: React.FC<{ children: ReactNode }> = ({ chi
     }));
     return filterByStation(enriched);
   }, [allDailyAccounts, shifts, employees, filterByStation]);
+
+  // Keep ref in sync with dailyAccounts for callbacks without creating dependency loops
+  dailyAccountsRef.current = dailyAccounts;
 
   useEffect(() => {
     if (isInitialized.current) return;
@@ -314,10 +318,10 @@ export const DailyAccountingProvider: React.FC<{ children: ReactNode }> = ({ chi
       return filterByStation(loaded);
     } catch (error) {
       console.error('Error loading accounts by date range:', error);
-      // fallback ใช้ข้อมูลที่มีใน memory
-      return dailyAccounts.filter(r => r.date >= startDate && r.date <= endDate);
+      // fallback ใช้ข้อมูลที่มีใน memory (ผ่าน ref เพื่อไม่ให้เกิด dependency loop)
+      return dailyAccountsRef.current.filter(r => r.date >= startDate && r.date <= endDate);
     }
-  }, [dailyAccounts, filterByStation]);
+  }, [filterByStation]);
 
   const setFuelPrice = useCallback((prices: Omit<FuelPrice, 'id' | 'createdAt'>) => {
     const newId = `fp${Date.now()}`;

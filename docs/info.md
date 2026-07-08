@@ -7,7 +7,7 @@ A comprehensive web-based shift management system for gas stations built with Re
 ### Core Features
 - **Employee Management**: Profile + User account management (1-to-1 relationship)
 - **Multi-Station/Branch Management**: Multi-branch support with station-scoped data
-- **Shift Scheduling**: Morning, afternoon, night shifts with auto-generation per branch
+- **Shift Scheduling**: Morning, afternoon, night shifts with auto-generation per branch and per-employee removal
 - **Leave Management**: Request and approval workflow
 - **Shift Swapping**: Request and approval between employees
 - **Attendance Tracking**: Check-in/out with GPS and status tracking (branch-filtered)
@@ -261,6 +261,12 @@ npm run lint     # Lint code
 ## Recent Updates
 
 ### กรกฎาคม 2026
+- **Fixed Reports Infinite Loading** - Fixed the Reports → Accounting tab getting stuck in a loading state
+  - Root cause: `loadAccountsByDateRange` in `DailyAccountingContext` depended on `dailyAccounts`, creating an infinite loop when the effect updated state
+  - Fix: Removed `dailyAccounts` from the callback dependency array and used a ref for fallback data
+  - Added `try/catch/finally` in `Reports.tsx` and a 5s timeout wrapper to `dailyAccountingStorage.getAll()` / `getByDateRange()`
+- **Remove Employee from Shift** - The `/schedule` page now supports removing an individual employee from a specific shift via an X button on the employee badge, with a confirmation dialog (Admin/Manager only)
+- **Audit Log Fallback** - `src/data/coreStorage.ts` now gracefully falls back to a minimal audit log payload when optional columns (`performed_by_name`, `performed_by_email`) are missing from the deployed schema, preventing 400 Bad Request errors
 - **Database-Level Backup (Edge Function)** - `supabase/functions/backup-database/index.ts`
   - Queries 22 main tables and generates a SQL dump (`TRUNCATE` + `INSERT`)
   - Uploads the `.sql` file to the private Supabase Storage bucket `backups`

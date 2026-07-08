@@ -9,7 +9,7 @@
 
 ### ระบบหลัก (Core Systems)
 - [x] ระบบจัดการพนักงาน + บัญชีผู้ใช้ (1-to-1 Profile-User)
-- [x] ตารางกะ + ระบบตัดกะอัตโนมัติ + ล้างตารางกะ
+- [x] ตารางกะ + ระบบตัดกะอัตโนมัติ + ล้างตารางกะ + ลบพนักงานออกจากกะ
 - [x] คำขอลา + อนุมัติการลา
 - [x] คำขอสลับกะ + อนุมัติการสลับกะ
 - [x] ลงเวลา (check-in/check-out) + สถานะ ปกติ/สาย/ออกก่อน
@@ -38,10 +38,16 @@
 - [x] Import Path Consistency (@/ alias)
 - [x] **Request Caching Layer** (`src/lib/cache.ts`) - localStorage cache สำหรับลด Supabase calls
 - [x] **Staggered Context Loading** - โหลด context ทีละตัวแทน Promise.all พร้อมกัน
-- [x] **Query Timeouts** - Timeout 1.5-2s บนทุก storage query ป้องกันการค้าง
+- [x] **Query Timeouts** - Timeout 5s บน `dailyAccountingStorage.getAll()` และ `getByDateRange()` ป้องกันการค้าง (พร้อม pattern สำหรับขยายไปยัง query อื่น)
 - [x] **Database Index Optimization** - `idx_users_authuid`, `idx_users_email` และอื่นๆ
 
 ### กรกฎาคม 2568
+- [x] **แก้ไข Reports ค้าง loading** — แก้ไขหน้า `Reports → รายงานบัญชี` ที่แสดงสถานะ loading ไม่หยุด
+  - สาเหตุ: `loadAccountsByDateRange` ใน `DailyAccountingContext` ขึ้นกับ `dailyAccounts` ทำให้เกิด infinite loop เมื่อ effect อัปเดต state
+  - แก้ไข: เอา `dailyAccounts` ออกจาก dependency array ของ callback และใช้ ref สำหรับ fallback
+  - เพิ่ม `try/catch/finally` ใน `Reports.tsx` และ timeout 5s ใน `dailyAccountingStorage`
+- [x] **ลบพนักงานออกจากกะ** — หน้า `/schedule` รองรับการลบพนักงานออกจากกะเฉพาะรายการ โดยคลิกไอคอน X บน badge ชื่อพนักงาน มี Dialog ยืนยัน (Admin/Manager)
+- [x] **Audit Log Fallback** — `logAudit()` ใน `coreStorage.ts` รองรับกรณีฐานข้อมูลไม่มีคอลัมน์ `performed_by_name`/`performed_by_email` โดย retry แบบ minimal payload ป้องกัน 400 Bad Request
 - [x] **ระบบสำรองฐานข้อมูลระดับ DB** — Supabase Edge Function `backup-database`
   - สำรอง 22 ตารางหลักเป็น SQL INSERT statements บันทึกลง Supabase Storage bucket `backups`
   - รองรับการเรียกจากหน้า Settings และ cron-job.org อัตโนมัติ

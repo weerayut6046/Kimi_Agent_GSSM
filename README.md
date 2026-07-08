@@ -5,7 +5,7 @@
 ## ฟีเจอร์หลัก
 
 - **จัดการพนักงานและบัญชีผู้ใช้** - เพิ่ม/แก้ไข/ลบข้อมูลพนักงาน พร้อมสร้างบัญชีผู้ใช้ (email, password, role) ในครั้งเดียว
-- **จัดการกะทำงาน** - กำหนดตารางกะ (เช้า/บ่าย/ดึก) และพนักงานประจำกะ พร้อมระบบตัดกะอัตโนมัติ และล้างตารางกะทั้งหมด
+- **จัดการกะทำงาน** - กำหนดตารางกะ (เช้า/บ่าย/ดึก) และพนักงานประจำกะ พร้อมระบบตัดกะอัตโนมัติ ล้างตารางกะทั้งหมด และลบพนักงานออกจากกะเฉพาะรายการได้
 - **บันทึกการลา** - ระบบขอลาและอนุมัติการลา (ป่วย, กิจ, พักร้อน)
 - **สลับกะ** - ระบบขอสลับกะและอนุมัติการสลับระหว่างพนักงาน
 - **บันทึกเวลา** - เช็คอิน/เช็คเอาท์ พร้อมบันทึกตำแหน่งและสถานะ (ปกติ, สาย, ออกก่อน)
@@ -29,6 +29,7 @@
 - **โหลดเร็ว & ประหยัดแบนด์วิดธ์** - แบ่งโหลดหน้าแบบ Lazy Loading และแยก Vendor Chunks ทำให้ JS หลักเหลือ ~85KB (gzip)
 - **ระบบ Cache อัจฉริยะ** - localStorage cache สำหรับลดการเรียก Supabase ซ้ำ พร้อม TTL ตามประเภทข้อมูล
 - **โหลดข้อมูลแบบ Stagger** - Context โหลดทีละตัวแทนการเรียกพร้อมกันทั้งหมด ป้องกันการ overload
+- **Query Timeouts** - มี timeout บน storage queries สำคัญ เช่น `daily_accounting` ป้องกันการโหลดค้าง
 - **รองรับ Accessibility** - มี ARIA labels, keyboard navigation, และภาษาไทย (`lang="th"`)
 
 ## เทคโนโลยี
@@ -557,6 +558,18 @@ swap_requests
 ### ❌ "column xxxx does not exist"
 - Column names ไม่ตรงกัน (camelCase vs lowercase)
 - รัน SQL setup script ใหม่
+
+### ❌ Audit log 400 Bad Request (`performed_by_name` column not found)
+**สาเหตุ**: ตาราง `audit_logs` ในฐานข้อมูลยังไม่มีคอลัมน์ `performed_by_name` หรือ `performed_by_email`
+
+**แก้ไข**:
+1. รันคำสั่งนี้ใน Supabase SQL Editor:
+```sql
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS performed_by_name text;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS performed_by_email text;
+NOTIFY pgrst, 'reload schema';
+```
+2. หรือรัน `sql/migrate-audit-add-performer-name.sql`
 
 ## License
 

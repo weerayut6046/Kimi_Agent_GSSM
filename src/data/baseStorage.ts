@@ -5,6 +5,19 @@ import type {
   Attendance, Notification, FuelPrice, DailyAccounting,
 } from '@/types';
 import { hashPassword } from '@/lib/security';
+import { logAudit, checkForRLSError } from './coreStorage';
+
+// ============================================
+// Timeout Helper
+// ============================================
+const withTimeout = <T>(fn: () => PromiseLike<T>, ms: number, label: string): Promise<T> => {
+  return Promise.race([
+    Promise.resolve().then(fn),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms)
+    ),
+  ]);
+};
 
 // ============================================
 // ID Generator Helper
@@ -16,70 +29,6 @@ export const generateId = (): string =>
 // Backup Version
 // ============================================
 export const BACKUP_VERSION = '1.0.0';
-
-// ============================================
-// Audit Trail Helper
-// ============================================
-const sanitizeForJsonb = (value: unknown): unknown => {
-  if (value === undefined || value === null) return null;
-  try {
-    return JSON.parse(JSON.stringify(value));
-  } catch {
-    return null;
-  }
-};
-
-export const logAudit = async (params: {
-  tableName: string;
-  recordId: string;
-  action: 'create' | 'update' | 'delete';
-  oldValue?: unknown;
-  newValue?: unknown;
-  performedBy?: string;
-  performedByEmail?: string | null;
-  performedByName?: string | null;
-}): Promise<void> => {
-  try {
-    const payload = {
-      table_name: params.tableName,
-      record_id: params.recordId,
-      action: params.action,
-      old_value: sanitizeForJsonb(params.oldValue),
-      new_value: sanitizeForJsonb(params.newValue),
-      performed_by: params.performedBy || 'system',
-      performed_by_email: params.performedByEmail || null,
-      performed_by_name: params.performedByName || null,
-      ip_address: null,
-    };
-    const { error } = await supabase.from('audit_logs').insert(payload);
-    if (error) {
-      console.error('Audit log insert error:', error.message, error.code, error.details, payload);
-    }
-  } catch (err) {
-    console.error('Audit log failed:', err);
-  }
-};
-
-// Helper to check for RLS errors and provide helpful messages
-export const checkForRLSError = (error: { message?: string; code?: string }, operation: string): void => {
-  if (error?.message?.includes('406') || error?.message?.includes('Not Acceptable')) {
-    console.error(`
-❌ RLS (Row Level Security) Error ในการ ${operation}
-
-ปัญหา: Supabase บล็อกการเข้าถึงข้อมูลเนื่องจากไม่มี RLS Policy
-
-วิธีแก้ไข:
-1. ไปที่ Supabase Dashboard → Table Editor → [ชื่อตาราง] → Policies
-2. คลิก "New Policy" หรือปิด RLS ชั่วคราว (สำหรับ development)
-
-SQL สำหรับสร้าง Policy:
-  CREATE POLICY "Allow all" ON [ชื่อตาราง] FOR ALL USING (true) WITH CHECK (true);
-
-หรือปิด RLS:
-  ALTER TABLE [ชื่อตาราง] DISABLE ROW LEVEL SECURITY;
-    `);
-  }
-};
 
 // ============================================
 // Name Helper
@@ -1567,10 +1516,18 @@ const stripSoftDeleteFields = (data: Record<string, unknown>): Record<string, un
 
 export const dailyAccountingStorage = {
   getAll: async (): Promise<DailyAccounting[]> => {
-    let { data, error } = await supabase.from('daily_accounting').select('*').eq('isdeleted', false);
+    let { data, error } = await withTimeout(
+      () => supabase.from('daily_accounting').select('*').eq('isdeleted', false),
+      5000,
+      'dailyAccountingStorage.getAll'
+    );
     if (error && isMissingColumnError(error)) {
       console.warn('[dailyAccountingStorage] isdeleted column missing, falling back');
-      ({ data, error } = await supabase.from('daily_accounting').select('*'));
+      ({ data, error } = await withTimeout(
+        () => supabase.from('daily_accounting').select('*'),
+        5000,
+        'dailyAccountingStorage.getAll(fallback)'
+      ));
     }
     if (error) {
       console.error('[dailyAccountingStorage.getAll] error:', error);
@@ -1604,18 +1561,26 @@ export const dailyAccountingStorage = {
     return (data || []).map((row: Record<string, unknown>) => mapDailyAccountingFromDb(row));
   },
   getByDateRange: async (startDate: string, endDate: string): Promise<DailyAccounting[]> => {
-    let { data, error } = await supabase
-      .from('daily_accounting')
-      .select('*')
-      .gte('date', startDate)
-      .lte('date', endDate)
-      .eq('isdeleted', false);
-    if (error && isMissingColumnError(error)) {
-      ({ data, error } = await supabase
+    let { data, error } = await withTimeout(
+      () => supabase
         .from('daily_accounting')
         .select('*')
         .gte('date', startDate)
-        .lte('date', endDate));
+        .lte('date', endDate)
+        .eq('isdeleted', false),
+      5000,
+      'dailyAccountingStorage.getByDateRange'
+    );
+    if (error && isMissingColumnError(error)) {
+      ({ data, error } = await withTimeout(
+        () => supabase
+          .from('daily_accounting')
+          .select('*')
+          .gte('date', startDate)
+          .lte('date', endDate),
+        5000,
+        'dailyAccountingStorage.getByDateRange(fallback)'
+      ));
     }
     if (error) {
       console.error('[dailyAccountingStorage.getByDateRange] error:', error);

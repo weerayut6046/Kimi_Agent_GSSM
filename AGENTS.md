@@ -7,7 +7,7 @@ A web-based shift management system for gas stations built with React, TypeScrip
 **Key Features:**
 - Employee management with roles (admin, manager, staff)
 - **Branch/Station Management** - Multi-branch support with station assignment for employees
-- Shift scheduling (morning, afternoon, night shifts) per branch
+- Shift scheduling (morning, afternoon, night shifts) per branch with per-employee removal
 - Leave request and approval workflow
 - Shift swap request system
 - Attendance tracking with check-in/check-out
@@ -276,7 +276,7 @@ The system maintains a **1-to-1 relationship** between `EmployeeProfile` (profil
 ```
 /login          - Login page
 /               - Dashboard (protected)
-/schedule       - Schedule management (protected)
+/schedule       - Schedule management (protected; admin/manager can remove employees from shifts)
 /employees      - Employee list (admin/manager only)
 /leave          - Leave requests (protected)
 /swap           - Shift swap requests (protected)
@@ -337,6 +337,7 @@ All pages (except Login) are lazy-loaded with `React.lazy()` and `Suspense`.
 The Settings page (`/settings`) allows admin/manager to:
 - **View and manage shifts** (add, edit, delete) with name, time, min staff, and color
 - **Clear all schedules** from the shift management section
+- **Remove employees from shifts** - From `/schedule`, admin/manager can click the X on an employee badge to remove that person from the shift (with confirmation dialog)
 - **Backup & Restore database** (Admin only) - Export selected tables to JSON file or restore specific tables from backup
 - View positions and skills
 - View system information (shows current station name dynamically)
@@ -360,6 +361,7 @@ The Stations page (`/stations`) allows admin to:
 - Only `admin` and `manager` can view audit logs
 - Only `admin` can manage stations (create, edit, delete)
 - Only `admin` and `manager` can delete daily accounting records (soft delete)
+- Only `admin` and `manager` can remove employees from shifts
 - Staff can view but cannot delete daily accounting records
 
 ### 9. Notification System
@@ -392,7 +394,7 @@ The app is optimized for mobile usage (staff primarily use phones for attendance
 - Reduced main JS chunk from ~1.4MB to ~284KB (gzipped 85KB)
 - **Request Caching Layer** (`src/lib/cache.ts`) - localStorage-based cache with TTL for all context loaders
 - **Staggered Context Loading** - Contexts load sequentially rather than all at once to avoid flooding Supabase
-- **Supabase Query Timeouts** - All storage queries have 1.5-2s timeout fallback to prevent infinite loading
+- **Supabase Query Timeouts** - `dailyAccountingStorage.getAll()` and `getByDateRange()` use a 5s timeout wrapper (`withTimeout` in `src/data/baseStorage.ts`) to prevent indefinite loading hangs
 - **Database Index Optimization** - `idx_users_authuid` and `idx_users_email` indexes for fast auth lookups
 
 ### 12. Accessibility (a11y)
@@ -1016,7 +1018,12 @@ After building with Capacitor:
 
 ## Recent Updates
 
-### Latest Updates (June 2026)
+### Latest Updates (July 2026)
+- **Reports Page Loading Fix** - Fixed infinite loading spinner on the Reports → Accounting tab
+  - Root cause: `loadAccountsByDateRange` in `DailyAccountingContext` depended on `dailyAccounts`, causing an infinite loop when the effect updated state
+  - Fix: Removed `dailyAccounts` from the callback dependency array and used a ref for fallback data
+  - Added `try/catch/finally` in `Reports.tsx` to ensure `isAccountingLoading` is always reset
+  - Added 5s timeout wrapper to `dailyAccountingStorage.getAll()` and `getByDateRange()` as a safety net
 - **Branch/Station Filtering** - Multi-branch support with station-scoped data
   - `AuthContext` auto-sets `currentStation` from profile on login
   - `EmployeeContext` provides `filteredEmployees` by station

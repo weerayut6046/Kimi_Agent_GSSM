@@ -336,7 +336,7 @@ CREATE TABLE stations (
 - [x] **Performance Optimization** ✅ เสร็จสมบูรณ์ (มิถุนายน 2568)
   - localStorage cache layer (`src/lib/cache.ts`)
   - Staggered context loading (ไม่ใช้ Promise.all พร้อมกัน)
-  - Query timeouts (1.5-2s) ป้องกันการค้าง
+  - Query timeouts (5s สำหรับ `daily_accounting`) ป้องกันการค้าง
   - `.maybeSingle()` แทน `.single()` สำหรับ user lookups
   - Database indexes: `idx_users_authuid`, `idx_users_email`
   

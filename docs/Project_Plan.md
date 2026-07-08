@@ -43,6 +43,7 @@
 - ✅ กำหนดจำนวนพนักงันต่อกะขั้นต่ำ
 - ✅ กำหนดทักษะที่ต้องการต่อกะ
 - ✅ ล้างตารางงานทั้งหมด
+- ✅ ลบพนักงานออกจากกะเฉพาะรายการ
 
 ### 2.4 ตัดกะอัตโนมัติ (Auto Scheduling)
 - ✅ ตัดกะตามเงื่อนไขที่กำหนด
@@ -418,6 +419,7 @@ interface POSSale {
 - [x] ระบบสร้างกะ
 - [x] ระบบตัดกะอัตโนมัติ
 - [x] ระบบแก้ไขกะด้วยตนเอง
+- [x] ระบบลบพนักงานออกจากกะเฉพาะรายการ
 
 ### Phase 5: ลาและสลับกะ
 - [x] ระบบขอลา
@@ -603,3 +605,15 @@ src/
 2. ✅ รายงาน PDF/Excel Export (เสร็จแล้ว — ทำฝั่ง client ด้วย `xlsx` + `jspdf`)
 3. Dark Mode
 4. ~~Real-time Subscriptions (Supabase Realtime)~~ ✅ เสร็จสมบูรณ์แล้ว (มิถุนายน 2568)
+
+---
+
+## 12. อัปเดตล่าสุด
+
+### กรกฎาคม 2568
+- ✅ **แก้ไข Reports ค้าง loading** - แก้ไขหน้า `Reports → รายงานบัญชี` ที่แสดงสถานะ loading ไม่หยุด
+  - สาเหตุ: `loadAccountsByDateRange` ใน `DailyAccountingContext` ขึ้นกับ `dailyAccounts` ทำให้เกิด infinite loop
+  - แก้ไข: เอา `dailyAccounts` ออกจาก dependency array ของ callback และใช้ ref สำหรับ fallback
+  - เพิ่ม `try/catch/finally` ใน `Reports.tsx` และ timeout 5s ใน `dailyAccountingStorage`
+- ✅ **ลบพนักงานออกจากกะ** - หน้า `/schedule` รองรับการลบพนักงานออกจากกะเฉพาะรายการ พร้อม Dialog ยืนยัน (เฉพาะ Admin/Manager)
+- ✅ **Audit Log Fallback** - `src/data/coreStorage.ts` รองรับฐานข้อมูลที่ไม่มีคอลัมน์ `performed_by_name` โดย retry แบบ minimal payload ป้องกัน 400 Bad Request

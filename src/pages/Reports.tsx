@@ -83,24 +83,46 @@ const Reports: React.FC = () => {
 
   // Load accounting data when month/year changes
   useEffect(() => {
+    let cancelled = false;
+    const timeoutId = setTimeout(() => {
+      if (!cancelled) {
+        setIsAccountingLoading(false);
+      }
+    }, 10000);
+
     const load = async () => {
       setIsAccountingLoading(true);
-      let start: string;
-      let end: string;
-      if (accountingView === 'month') {
-        const [year, month] = accountingMonth.split('-').map(Number);
-        const d = new Date(year, month - 1, 1);
-        start = startOfMonth(d).toISOString().split('T')[0];
-        end = endOfMonth(d).toISOString().split('T')[0];
-      } else {
-        start = `${accountingYear}-01-01`;
-        end = `${accountingYear}-12-31`;
+      try {
+        let start: string;
+        let end: string;
+        if (accountingView === 'month') {
+          const [year, month] = accountingMonth.split('-').map(Number);
+          const d = new Date(year, month - 1, 1);
+          start = startOfMonth(d).toISOString().split('T')[0];
+          end = endOfMonth(d).toISOString().split('T')[0];
+        } else {
+          start = `${accountingYear}-01-01`;
+          end = `${accountingYear}-12-31`;
+        }
+        const data = await loadAccountsByDateRange(start, end);
+        if (!cancelled) {
+          setAccountingData(data);
+        }
+      } catch (error) {
+        console.error('Error loading accounting report:', error);
+      } finally {
+        clearTimeout(timeoutId);
+        if (!cancelled) {
+          setIsAccountingLoading(false);
+        }
       }
-      const data = await loadAccountsByDateRange(start, end);
-      setAccountingData(data);
-      setIsAccountingLoading(false);
     };
     load();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
   }, [accountingMonth, accountingYear, accountingView, loadAccountsByDateRange]);
 
   // ===== SCHEDULE REPORT CALCULATIONS =====
