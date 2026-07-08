@@ -9,6 +9,7 @@ import type {
   Supplier,
 } from '@/types/inventory';
 import { supabase } from '@/lib/supabase';
+import { logAudit } from './coreStorage';
 
 // ============================================================================
 // Helper Functions - Fuel Inventory Mapping
@@ -248,6 +249,7 @@ export const fuelInventoryStorage = {
       return null;
     }
     
+    await logAudit({ tableName: 'fuel_inventory', recordId: id, action: 'create', newValue: dbData });
     return { ...data, id, closingStock, variance, createdAt: now };
   },
 
@@ -275,6 +277,7 @@ export const fuelInventoryStorage = {
       console.error('Error updating actual stock:', error);
       return false;
     }
+    await logAudit({ tableName: 'fuel_inventory', recordId: id, action: 'update', newValue: { actual_stock: actualStock, variance } });
     return true;
   },
 
@@ -354,6 +357,7 @@ export const fuelDeliveryStorage = {
       return null;
     }
     
+    await logAudit({ tableName: 'fuel_deliveries', recordId: id, action: 'create', newValue: dbData });
     return { ...data, id, totalAmount, createdAt: now };
   },
 
@@ -382,6 +386,8 @@ export const fuelDeliveryStorage = {
       console.error('Error confirming delivery:', updateError);
       return false;
     }
+    
+    await logAudit({ tableName: 'fuel_deliveries', recordId: id, action: 'update', newValue: { status: 'received', received_date: receivedDate, received_by: receivedBy } });
     
     // Update fuel inventory received quantity
     const fuelType = delivery.fuel_type as FuelType;
@@ -452,6 +458,7 @@ export const fuelDeliveryStorage = {
       console.error('Error rejecting delivery:', error);
       return false;
     }
+    await logAudit({ tableName: 'fuel_deliveries', recordId: id, action: 'update', newValue: { status: 'rejected' } });
     return true;
   },
 };
@@ -514,6 +521,7 @@ export const productStorage = {
       return null;
     }
     
+    await logAudit({ tableName: 'products', recordId: id, action: 'create', newValue: dbData });
     return { ...product, id, createdAt: now };
   },
 
@@ -529,6 +537,7 @@ export const productStorage = {
       console.error('Error updating product:', error);
       return false;
     }
+    await logAudit({ tableName: 'products', recordId: id, action: 'update', newValue: dbUpdates });
     return true;
   },
 
@@ -543,6 +552,7 @@ export const productStorage = {
       console.error('Error deleting product:', error);
       return false;
     }
+    await logAudit({ tableName: 'products', recordId: id, action: 'delete', newValue: { is_active: false } });
     return true;
   },
 
@@ -613,6 +623,8 @@ export const productStorage = {
     if (trxError) {
       console.error('Error recording transaction:', trxError);
       // Rollback stock update would be complex, log for manual fix
+    } else {
+      await logAudit({ tableName: 'product_transactions', recordId: transactionId, action: 'create', newValue: transactionData });
     }
     
     return true;
@@ -686,6 +698,7 @@ export const supplierStorage = {
       return null;
     }
     
+    await logAudit({ tableName: 'suppliers', recordId: id, action: 'create', newValue: dbData });
     return { ...supplier, id, createdAt: now };
   },
 
@@ -701,6 +714,7 @@ export const supplierStorage = {
       console.error('Error updating supplier:', error);
       return false;
     }
+    await logAudit({ tableName: 'suppliers', recordId: id, action: 'update', newValue: dbUpdates });
     return true;
   },
 
@@ -714,6 +728,7 @@ export const supplierStorage = {
       console.error('Error deleting supplier:', error);
       return false;
     }
+    await logAudit({ tableName: 'suppliers', recordId: id, action: 'delete', newValue: { is_active: false } });
     return true;
   },
 };

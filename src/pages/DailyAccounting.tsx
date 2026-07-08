@@ -316,22 +316,22 @@ const DailyAccountingPage: React.FC = () => {
   // ตรวจสอบค่ามิเตอร์และเงินสดว่ากรอกถูกต้องหรือไม่
   const validateMeterAndCash = (): string | null => {
     const hasMeterEnd = Object.values(formData.fuelMeter).some(dispenser =>
-      Object.values(dispenser).some((nozzle: { end: number }) => nozzle.end > 0)
+      (Object.values(dispenser) as { end: number }[]).some(nozzle => nozzle.end > 0)
     );
     if (!hasMeterEnd) return 'กรุณากรอกค่ามิเตอร์สิ้นสุดอย่างน้อย 1 หัวจ่าย';
 
     const hasInvalidMeter = Object.values(formData.fuelMeter).some(dispenser =>
-      Object.values(dispenser).some((nozzle: { start: number; end: number }) => nozzle.end < nozzle.start)
+      (Object.values(dispenser) as { start: number; end: number }[]).some(nozzle => nozzle.end < nozzle.start)
     );
     if (hasInvalidMeter) return 'ค่ามิเตอร์สิ้นสุดต้องไม่น้อยกว่าค่าเริ่มต้น';
 
     const hasCashEnd = Object.values(formData.dispenserCash).some(dispenser =>
-      Object.values(dispenser).some((nozzle: { end: number }) => nozzle.end > 0)
+      (Object.values(dispenser) as { end: number }[]).some(nozzle => nozzle.end > 0)
     );
     if (!hasCashEnd) return 'กรุณากรอกยอดเงินสิ้นสุดอย่างน้อย 1 หัวจ่าย';
 
     const hasInvalidCash = Object.values(formData.dispenserCash).some(dispenser =>
-      Object.values(dispenser).some((nozzle: { start: number; end: number }) => nozzle.end < nozzle.start)
+      (Object.values(dispenser) as { start: number; end: number }[]).some(nozzle => nozzle.end < nozzle.start)
     );
     if (hasInvalidCash) return 'ยอดเงินสิ้นสุดต้องไม่น้อยกว่ายอดเงินเริ่มต้น';
 

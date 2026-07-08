@@ -242,6 +242,23 @@ UPDATE users u SET authuid = a.id FROM auth.users a WHERE u.email = a.email;
 
 ---
 
+### ❌ Audit log 400 Bad Request (`performed_by_name` column not found)
+
+**สาเหตุ**: ตาราง `audit_logs` ยังไม่มีคอลัมน์ `performed_by_name` หรือ `performed_by_email` (มักเกิดขึ้นกับฐานข้อมูลที่สร้างก่อนรัน `migrate-audit-add-performer-name.sql`)
+
+**แก้ไข**:
+1. รันคำสั่งนี้ใน Supabase SQL Editor:
+```sql
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS performed_by_name text;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS performed_by_email text;
+NOTIFY pgrst, 'reload schema';
+```
+2. หรือรันไฟล์ `sql/migrate-audit-add-performer-name.sql`
+
+**หมายเหตุ**: แอพมี fallback อัตโนมัติ ถ้าคอลัมน์ขาดระบบจะบันทึก audit log แบบ minimal โดยไม่ crash แต่ชื่อผู้กระทำจะไม่ถูกบันทึกจนกว่าจะเพิ่มคอลัมน์
+
+---
+
 ## โครงสร้าง Database
 
 ```
@@ -327,6 +344,8 @@ public.stations
 - **Bug Fixes** - แก้ไข `sale_items` ไม่มีตาราง, `fuel_inventory` 406 error, `auth.uid()` UUID cast
 
 ### กรกฎาคม 2026
+- **ลบพนักงานออกจากกะ** - หน้า `/schedule` รองรับการลบพนักงานออกจากกะเฉพาะรายการ พร้อม Dialog ยืนยัน (เฉพาะ Admin/Manager)
+- **Audit Log Fallback** - รองรับฐานข้อมูลที่ไม่มีคอลัมน์ `performed_by_name` โดยบันทึก audit log แบบ minimal อัตโนมัติ ป้องกัน 400 Bad Request
 - **ระบบสำรองฐานข้อมูลระดับ DB (Database-Level Backup)** - สำรองข้อมูลทั้งหมดเป็นไฟล์ SQL ผ่าน Supabase Edge Function `backup-database`
   - สำรอง 22 ตารางหลักเป็น SQL INSERT statements บันทึกลง Supabase Storage bucket `backups`
   - รองรับการเรียกจากหน้า Settings และจาก cron-job.org อัตโนมัติ

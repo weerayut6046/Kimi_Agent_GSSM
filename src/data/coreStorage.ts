@@ -8,6 +8,92 @@ export const BACKUP_VERSION = '1.0.0';
 // Audit Trail Helper
 // ============================================
 
+const sanitizeForJsonb = (value: unknown): unknown => {
+  if (value === undefined || value === null) return null;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return null;
+  }
+};
+
+// Cache current user info for audit logs to avoid repeated lookups
+let auditUserCache: { id: string; email: string | null; name: string | null } | null = null;
+let auditUserCacheTime = 0;
+const AUDIT_USER_CACHE_TTL = 60 * 1000; // 1 minute
+
+const getCurrentAuditUser = async (): Promise<{ id: string; email: string | null; name: string | null } | null> => {
+  const now = Date.now();
+  // ใช้ cache เฉพาะเมื่อมีข้อมูลผู้ใช้ และยังไม่หมดอายุ
+  if (auditUserCache && now - auditUserCacheTime < AUDIT_USER_CACHE_TTL) {
+    return auditUserCache;
+  }
+
+  try {
+    // ดึง session จาก local storage (เร็ว)
+    let { data: { session } } = await supabase.auth.getSession();
+
+    // fallback: ถ้าไม่มี session ให้ลอง getUser() อีกครั้ง
+    if (!session?.user) {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          session = { user } as typeof session;
+        }
+      } catch {
+        // ignore getUser fallback errors
+      }
+    }
+
+    if (!session?.user) {
+      // ไม่ cache null เพื่อให้ครั้งถัดไปลองใหม่
+      return null;
+    }
+
+    const userId = session.user.id;
+    const email = session.user.email || null;
+    let name: string | null = null;
+
+    // Best-effort lookup ชื่อพนักงานจากตาราง users + profiles
+    try {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('profileid')
+        .eq('authuid', userId)
+        .maybeSingle();
+      if (userData?.profileid) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('fullname')
+          .eq('id', userData.profileid)
+          .maybeSingle();
+        name = profileData?.fullname || null;
+      }
+    } catch {
+      // ignore profile lookup errors
+    }
+
+    auditUserCache = { id: userId, email, name };
+    auditUserCacheTime = now;
+    return auditUserCache;
+  } catch (err) {
+    console.warn('[Audit] Failed to get current user:', err);
+    return null;
+  }
+};
+
+// Clear audit user cache on auth state changes
+try {
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_OUT' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
+      auditUserCache = null;
+      auditUserCacheTime = 0;
+    }
+  });
+} catch {
+  // ignore
+}
+
 export const logAudit = async (params: {
   tableName: string;
   recordId: string;
@@ -19,17 +105,49 @@ export const logAudit = async (params: {
   performedByName?: string | null;
 }): Promise<void> => {
   try {
-    await supabase.from('audit_logs').insert({
+    const currentUser = await getCurrentAuditUser();
+    const performedBy = params.performedBy || currentUser?.id || 'system';
+    const performedByEmail = params.performedByEmail !== undefined ? params.performedByEmail : currentUser?.email || null;
+    const performedByName = params.performedByName !== undefined ? params.performedByName : currentUser?.name || null;
+
+    const payload = {
       table_name: params.tableName,
       record_id: params.recordId,
       action: params.action,
-      old_value: params.oldValue ?? null,
-      new_value: params.newValue ?? null,
-      performed_by: params.performedBy || 'system',
-      performed_by_email: params.performedByEmail || null,
-      performed_by_name: params.performedByName || null,
+      old_value: sanitizeForJsonb(params.oldValue),
+      new_value: sanitizeForJsonb(params.newValue),
+      performed_by: performedBy,
+      performed_by_email: performedByEmail,
+      performed_by_name: performedByName,
       ip_address: null,
-    });
+    };
+
+    const { error } = await supabase.from('audit_logs').insert(payload);
+    if (error) {
+      // If optional columns are missing from the deployed schema, fall back to
+      // inserting without them so the audit trail is still recorded.
+      const isMissingColumnError =
+        error.code === 'PGRST204' ||
+        /Could not find the .* column of 'audit_logs'/.test(error.message || '');
+
+      if (isMissingColumnError) {
+        const minimalPayload = {
+          table_name: payload.table_name,
+          record_id: payload.record_id,
+          action: payload.action,
+          old_value: payload.old_value,
+          new_value: payload.new_value,
+          performed_by: payload.performed_by,
+          ip_address: payload.ip_address,
+        };
+        const { error: minimalError } = await supabase.from('audit_logs').insert(minimalPayload);
+        if (minimalError) {
+          console.error('Audit log insert error (minimal):', minimalError.message, minimalError.code, minimalError.details, minimalPayload);
+        }
+      } else {
+        console.error('Audit log insert error:', error.message, error.code, error.details, payload);
+      }
+    }
   } catch (err) {
     console.error('Audit log failed:', err);
   }

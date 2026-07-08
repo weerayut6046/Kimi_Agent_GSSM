@@ -1,5 +1,6 @@
 import type { PayrollPeriod, PayrollRecord } from '@/types';
 import { supabase } from '@/lib/supabase';
+import { logAudit } from './coreStorage';
 
 // ============================================
 // Payroll Period Mapping Helpers
@@ -107,6 +108,7 @@ export const payrollPeriodStorage = {
       console.error('Error creating payroll period:', error);
       return false;
     }
+    await logAudit({ tableName: 'payroll_periods', recordId: period.id, action: 'create', newValue: dbPeriod });
     return true;
   },
 
@@ -117,6 +119,7 @@ export const payrollPeriodStorage = {
       console.error('Error updating payroll period:', error);
       return false;
     }
+    await logAudit({ tableName: 'payroll_periods', recordId: id, action: 'update', newValue: dbUpdates });
     return true;
   },
 
@@ -126,6 +129,7 @@ export const payrollPeriodStorage = {
       console.error('Error deleting payroll period:', error);
       return false;
     }
+    await logAudit({ tableName: 'payroll_periods', recordId: id, action: 'delete' });
     return true;
   },
 };
@@ -175,6 +179,7 @@ export const payrollRecordStorage = {
       console.error('Error creating payroll record:', error);
       return false;
     }
+    await logAudit({ tableName: 'payroll_records', recordId: record.id, action: 'create', newValue: dbRecord });
     return true;
   },
 
@@ -185,6 +190,7 @@ export const payrollRecordStorage = {
       console.error('Error updating payroll record:', error);
       return false;
     }
+    await logAudit({ tableName: 'payroll_records', recordId: id, action: 'update', newValue: dbUpdates });
     return true;
   },
 
@@ -194,6 +200,7 @@ export const payrollRecordStorage = {
       console.error('Error deleting payroll record:', error);
       return false;
     }
+    await logAudit({ tableName: 'payroll_records', recordId: id, action: 'delete' });
     return true;
   },
 
@@ -204,6 +211,9 @@ export const payrollRecordStorage = {
     if (error) {
       console.error('Error bulk creating payroll records:', error);
       return false;
+    }
+    for (const record of records) {
+      await logAudit({ tableName: 'payroll_records', recordId: record.id, action: 'create', newValue: mapPayrollRecordToDb(record) });
     }
     return true;
   },

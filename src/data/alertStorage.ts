@@ -1,5 +1,6 @@
 import type { Alert } from '@/types';
 import { supabase } from '@/lib/supabase';
+import { logAudit } from './coreStorage';
 
 const mapAlertFromDb = (row: Record<string, unknown>): Alert => ({
   id: row.id as string,
@@ -87,7 +88,11 @@ export const alertStorage = {
       .from('alerts')
       .update({ is_resolved: true, resolved_at: new Date().toISOString() })
       .eq('id', id);
-    if (error) console.error('Error resolving alert:', error);
+    if (error) {
+      console.error('Error resolving alert:', error);
+      return;
+    }
+    await logAudit({ tableName: 'alerts', recordId: id, action: 'update', newValue: { is_resolved: true, resolved_at: new Date().toISOString() } });
   },
 
   create: async (alert: Omit<Alert, 'id' | 'createdAt'>): Promise<void> => {
@@ -98,7 +103,11 @@ export const alertStorage = {
     };
     const dbData = mapAlertToDb(newAlert);
     const { error } = await supabase.from('alerts').insert(dbData);
-    if (error) console.error('Error creating alert:', error);
+    if (error) {
+      console.error('Error creating alert:', error);
+      return;
+    }
+    await logAudit({ tableName: 'alerts', recordId: newAlert.id, action: 'create', newValue: dbData });
   },
 
   deleteOld: async (days: number): Promise<void> => {

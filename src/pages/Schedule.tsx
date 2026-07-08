@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Plus, RotateCcw, Download, CalendarX } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Plus, RotateCcw, Download, CalendarX, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, addWeeks, subWeeks, startOfWeek, parseISO } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -26,6 +26,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useSchedule } from '@/contexts/ScheduleContext';
+import type { Schedule } from '@/types';
 import { useEmployee } from '@/contexts/EmployeeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { getWeekDays, formatShortThaiDate, getDayName } from '@/utils/dateUtils';
@@ -40,12 +41,14 @@ const Schedule: React.FC = () => {
   const { onMenuClick } = useOutletContext<LayoutContext>();
   const { user } = useAuth();
   const { employees, isLoading: isEmployeeLoading } = useEmployee();
-  const { schedules, shifts, isLoading: isScheduleLoading, addSchedule, addShift, generateSchedule, clearAllSchedules, getSchedulesByDateRange } = useSchedule();
+  const { schedules, shifts, isLoading: isScheduleLoading, addSchedule, addShift, generateSchedule, clearAllSchedules, getSchedulesByDateRange, deleteSchedule } = useSchedule();
 
   const [currentWeek, setCurrentWeek] = useState(new Date());
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isAddShiftDialogOpen, setIsAddShiftDialogOpen] = useState(false);
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [scheduleToDelete, setScheduleToDelete] = useState<Schedule | null>(null);
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedShift, setSelectedShift] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState('');
@@ -127,6 +130,25 @@ const Schedule: React.FC = () => {
     setSelectedShift('');
     setSelectedEmployee('');
     setFormError('');
+  };
+
+  const handleDeleteClick = (schedule: Schedule) => {
+    setScheduleToDelete(schedule);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!scheduleToDelete) return;
+    try {
+      await deleteSchedule(scheduleToDelete.id);
+      toast.success('ลบพนักงานออกจากกะสำเร็จ');
+    } catch (error) {
+      toast.error('ไม่สามารถลบพนักงานออกจากกะได้');
+      console.error(error);
+    } finally {
+      setIsDeleteDialogOpen(false);
+      setScheduleToDelete(null);
+    }
   };
 
   const resetShiftForm = () => {
@@ -332,13 +354,23 @@ const Schedule: React.FC = () => {
                           {cellSchedules.map((sched) => (
                             <div
                               key={sched.id}
-                              className="px-2 py-1 rounded text-sm truncate"
+                              className="group flex items-center justify-between gap-1 px-2 py-1 rounded text-sm"
                               style={{
                                 backgroundColor: `${shift.color}20`,
                                 borderLeft: `3px solid ${shift.color}`,
                               }}
                             >
-                              {sched.employee?.fullName || '-'}
+                              <span className="truncate flex-1">{sched.employee?.fullName || '-'}</span>
+                              {(user?.role === 'admin' || user?.role === 'manager') && (
+                                <button
+                                  onClick={() => handleDeleteClick(sched)}
+                                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex-shrink-0 p-0.5 text-slate-400 hover:text-red-600 transition-opacity"
+                                  aria-label={`ลบ ${sched.employee?.fullName || ''} ออกจากกะ`}
+                                  title="ลบพนักงานออกจากกะ"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                             </div>
                           ))}
                           
@@ -402,6 +434,41 @@ const Schedule: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {/* Delete Schedule Confirmation Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <CalendarX className="w-5 h-5" />
+              ลบพนักงานออกจากกะ
+            </DialogTitle>
+            <DialogDescription>
+              คุณแน่ใจหรือไม่ว่าต้องการลบ{' '}
+              <span className="font-medium text-slate-900">
+                {scheduleToDelete?.employee?.fullName || 'พนักงาน'}
+              </span>{' '}
+              ออกจากกะ{' '}
+              <span className="font-medium text-slate-900">
+                {scheduleToDelete?.shift?.name || ''}
+              </span>{' '}
+              ในวันที่{' '}
+              <span className="font-medium text-slate-900">
+                {scheduleToDelete?.date ? formatShortThaiDate(scheduleToDelete.date) : ''}
+              </span>
+              ?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmDelete}>
+              ลบ
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Clear All Schedules Dialog */}
       <Dialog open={isClearDialogOpen} onOpenChange={setIsClearDialogOpen}>

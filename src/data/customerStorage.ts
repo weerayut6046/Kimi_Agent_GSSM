@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { Customer, CustomerTransaction, CustomerFilter, CustomerTier } from '@/types/customer';
+import { logAudit } from './coreStorage';
 
 const mapCustomerFromDb = (row: Record<string, unknown>): Customer => ({
   id: row.id as string,
@@ -109,6 +110,7 @@ export const customerStorage = {
     if (error) {
       return null;
     }
+    await logAudit({ tableName: 'customers', recordId: id, action: 'create', newValue: mapCustomerToDb(newCustomer) });
     return newCustomer;
   },
 
@@ -118,6 +120,7 @@ export const customerStorage = {
     if (error) {
       return false;
     }
+    await logAudit({ tableName: 'customers', recordId: id, action: 'update', newValue: dbUpdates });
     return true;
   },
 
@@ -126,6 +129,7 @@ export const customerStorage = {
     if (error) {
       return false;
     }
+    await logAudit({ tableName: 'customers', recordId: id, action: 'delete' });
     return true;
   },
 
@@ -152,8 +156,9 @@ export const customerStorage = {
     }
 
     // Create transaction record
+    const earnTxId = `ctx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const { error: txError } = await supabase.from('customer_transactions').insert({
-      id: `ctx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: earnTxId,
       customer_id: customerId,
       sale_id: saleId || null,
       type: 'earn',
@@ -166,6 +171,8 @@ export const customerStorage = {
       return false;
     }
 
+    await logAudit({ tableName: 'customer_transactions', recordId: earnTxId, action: 'create', newValue: { customer_id: customerId, type: 'earn', points, amount, sale_id: saleId || null } });
+    await logAudit({ tableName: 'customers', recordId: customerId, action: 'update', newValue: { points: newPoints, total_spent: newTotalSpent } });
     return true;
   },
 
@@ -185,8 +192,9 @@ export const customerStorage = {
       return false;
     }
 
+    const redeemTxId = `ctx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const { error: txError } = await supabase.from('customer_transactions').insert({
-      id: `ctx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: redeemTxId,
       customer_id: customerId,
       type: 'redeem',
       points: -points,
@@ -199,6 +207,8 @@ export const customerStorage = {
       return false;
     }
 
+    await logAudit({ tableName: 'customer_transactions', recordId: redeemTxId, action: 'create', newValue: { customer_id: customerId, type: 'redeem', points: -points, amount: 0, note: note || null } });
+    await logAudit({ tableName: 'customers', recordId: customerId, action: 'update', newValue: { points: newPoints } });
     return true;
   },
 

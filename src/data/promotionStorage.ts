@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { Promotion, PromotionFilter } from '@/types/promotion';
+import { logAudit } from './coreStorage';
 
 const mapPromotionFromDb = (row: Record<string, unknown>): Promotion => ({
   id: row.id as string,
@@ -106,6 +107,7 @@ export const promotionStorage = {
       console.error('Error creating promotion:', error);
       return null;
     }
+    await logAudit({ tableName: 'promotions', recordId: id, action: 'create', newValue: mapPromotionToDb(newPromotion) });
     return newPromotion;
   },
 
@@ -116,6 +118,7 @@ export const promotionStorage = {
       console.error('Error updating promotion:', error);
       return false;
     }
+    await logAudit({ tableName: 'promotions', recordId: id, action: 'update', newValue: dbUpdates });
     return true;
   },
 
@@ -125,6 +128,7 @@ export const promotionStorage = {
       console.error('Error deleting promotion:', error);
       return false;
     }
+    await logAudit({ tableName: 'promotions', recordId: id, action: 'delete' });
     return true;
   },
 };

@@ -2,6 +2,7 @@
 import { supabase } from '@/lib/supabase';
 import type { Sale, SaleItem, Payment, DailySalesSummary, QuickProduct } from '@/types/pos';
 import { generateId } from '@/lib/utils';
+import { logAudit } from './coreStorage';
 
 // Generate sale number (POS-YYYYMMDD-XXX)
 const generateSaleNumber = (): string => {
@@ -185,6 +186,7 @@ export const saleStorage = {
       throw error;
     }
 
+    await logAudit({ tableName: 'sales', recordId: newSale.id as string, action: 'create', newValue: dbData });
     return mapSaleFromDb(data);
   },
 
@@ -207,6 +209,7 @@ export const saleStorage = {
       return undefined;
     }
 
+    await logAudit({ tableName: 'sales', recordId: id, action: 'update', newValue: updateData });
     return mapSaleFromDb(data);
   },
 
@@ -232,6 +235,7 @@ export const saleStorage = {
       return undefined;
     }
 
+    await logAudit({ tableName: 'sales', recordId: id, action: 'update', newValue: updateData });
     return mapSaleFromDb(data);
   },
 
@@ -257,6 +261,7 @@ export const saleStorage = {
       return undefined;
     }
 
+    await logAudit({ tableName: 'sales', recordId: id, action: 'update', newValue: updateData });
     return mapSaleFromDb(data);
   },
 
@@ -325,8 +330,9 @@ export const posStockStorage = {
       }
 
       // Create transaction record
+      const transactionId = generateId();
       await supabase.from('product_transactions').insert({
-        id: generateId(),
+        id: transactionId,
         product_id: productId,
         type: 'out',
         quantity: -quantity,
@@ -334,6 +340,8 @@ export const posStockStorage = {
         reference_id: saleId,
         created_at: new Date().toISOString(),
       });
+
+      await logAudit({ tableName: 'product_transactions', recordId: transactionId, action: 'create', newValue: { product_id: productId, type: 'out', quantity: -quantity, reference_type: 'sale', reference_id: saleId } });
 
       return true;
     } catch (err) {
@@ -372,14 +380,17 @@ export const posStockStorage = {
       }
 
       // Create transaction record
+      const transactionId = generateId();
       await supabase.from('product_transactions').insert({
-        id: generateId(),
+        id: transactionId,
         product_id: productId,
         type: 'adjust',
         quantity: quantity,
         note: reason,
         created_at: new Date().toISOString(),
       });
+
+      await logAudit({ tableName: 'product_transactions', recordId: transactionId, action: 'create', newValue: { product_id: productId, type: 'adjust', quantity, note: reason } });
 
       return true;
     } catch (err) {
