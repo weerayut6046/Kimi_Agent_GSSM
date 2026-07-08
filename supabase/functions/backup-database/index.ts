@@ -37,6 +37,25 @@ function getSupabaseClient(): SupabaseClient {
   });
 }
 
+async function ensureBucket(supabase: SupabaseClient): Promise<void> {
+  const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+  if (listError) {
+    throw new Error(`ไม่สามารถตรวจสอบ bucket ได้: ${listError.message}`);
+  }
+
+  const bucketExists = buckets?.some((b) => b.id === 'backups');
+  if (!bucketExists) {
+    const { error: createError } = await supabase.storage.createBucket('backups', {
+      public: false,
+      fileSizeLimit: 52428800,
+      allowedMimeTypes: ['application/sql', 'application/gzip', 'application/x-gzip', 'text/plain'],
+    });
+    if (createError) {
+      throw new Error(`ไม่สามารถสร้าง bucket ได้: ${createError.message}`);
+    }
+  }
+}
+
 function escapeSqlValue(value: unknown): string {
   if (value === null || value === undefined) return 'NULL';
   if (typeof value === 'boolean') return value ? 'true' : 'false';
@@ -168,11 +187,12 @@ serve(async (req) => {
     const sqlDump = await generateSqlDump(supabase);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const filename = `logical-backup-${timestamp}.sql`;
-    const path = `backups/${filename}`;
+
+    await ensureBucket(supabase);
 
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('backups')
-      .upload(path, new TextEncoder().encode(sqlDump), {
+      .upload(filename, new TextEncoder().encode(sqlDump), {
         contentType: 'application/sql',
         upsert: true,
       });
@@ -185,7 +205,14 @@ serve(async (req) => {
       );
     }
 
-    const { data: publicUrl } = supabase.storage.from('backups').getPublicUrl(path);
+    // Bucket is private; generate a short-lived signed URL for immediate download
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+      .from('backups')
+      .createSignedUrl(filename, 60 * 60);
+
+    if (signedUrlError) {
+      console.error('Signed URL error:', signedUrlError);
+    }
 
     return new Response(
       JSON.stringify({
@@ -194,7 +221,7 @@ serve(async (req) => {
         filename,
         path: uploadData.path,
         size: sqlDump.length,
-        url: publicUrl.publicUrl,
+        url: signedUrlData?.signedUrl,
       } as BackupResponse),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
