@@ -205,7 +205,7 @@ export const backupApi = {
   async triggerDatabaseBackup(): Promise<DatabaseBackupResponse> {
     const { data: { session } } = await supabase.auth.getSession();
     return invokeFunction<DatabaseBackupResponse>(
-      'trigger-database-backup',
+      'backup-database',
       undefined,
       { token: session?.access_token }
     );

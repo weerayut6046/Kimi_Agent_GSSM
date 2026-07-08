@@ -818,25 +818,63 @@ Tables are automatically sorted by dependencies during restore:
 - **Restore Dialog**: Shows only tables present in the backup file with record counts
 - **Progress Indication**: Shows number of selected tables in button labels
 
-### Database-Level Backup (GitHub Actions + pg_dump)
-In addition to the in-app JSON backup/restore, the project includes an automated **database-level backup** using GitHub Actions and `pg_dump`.
+### Database-Level Backup
+In addition to the in-app JSON backup/restore, the project includes two options for **database-level backup**:
+
+#### Option 1: Edge Function Logical Backup (Recommended for free tier)
+This is the default backup method triggered from the Settings page. It runs entirely on Supabase and does not require GitHub Actions.
 
 **Files:**
-- `.github/workflows/database-backup.yml` - Scheduled workflow that runs daily at 02:00 AM (Thailand time) or when triggered from the web app
-- `scripts/upload-backup.py` - Python script that uploads the compressed backup to Supabase Storage
+- `supabase/functions/backup-database/index.ts` - Edge Function that queries all tables and generates SQL INSERT statements
 - `sql/create-backups-bucket.sql` - SQL to create the private `backups` Storage bucket
-- `supabase/functions/trigger-database-backup/index.ts` - Edge Function that triggers the backup from the web app
 - `src/lib/api.ts` - Frontend API client with `backupApi.triggerDatabaseBackup()`
 - `src/pages/Settings.tsx` - UI button for admin users to trigger the backup
 
 **What it does:**
-1. Runs `pg_dump` against the database using `SUPABASE_DB_URL`
-2. Compresses the dump with `gzip`
-3. Uploads the `.gz` file to the Supabase Storage bucket `backups`
-4. Keeps a fallback artifact in GitHub Actions for 30 days
-5. Admin users can also trigger the backup manually from Settings page via `backupApi.triggerDatabaseBackup()`
+1. Queries data from all major tables using the service role key
+2. Generates a `.sql` file with `TRUNCATE` and `INSERT` statements
+3. Uploads the `.sql` file to the Supabase Storage bucket `backups`
+4. Can be triggered manually from the Settings page or automatically via cron-job.org
 
-**Required GitHub Secrets (for the workflow):**
+**Required Supabase Edge Function Secrets:**
+- `SUPABASE_URL` - Project URL
+- `SUPABASE_SERVICE_ROLE_KEY` - Service role key
+- `BACKUP_SECRET_KEY` - Random secret key for cron job authentication
+
+**Setup:**
+1. Run `sql/create-backups-bucket.sql` in the Supabase SQL Editor
+2. Set the required Supabase secrets:
+   ```bash
+   supabase secrets set SUPABASE_URL=https://your-project.supabase.co
+   supabase secrets set SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+   supabase secrets set BACKUP_SECRET_KEY=your-random-secret-key
+   ```
+3. Deploy the Edge Function:
+   ```bash
+   supabase functions deploy backup-database
+   ```
+
+**Automated scheduling with cron-job.org:**
+1. Sign up at https://cron-job.org
+2. Create a new cron job with URL:
+   ```
+   https://your-project.supabase.co/functions/v1/backup-database
+   ```
+3. Method: `POST`
+4. Headers:
+   - `Authorization: Bearer <ignored>`
+   - `x-backup-secret: your-random-secret-key`
+5. Schedule: daily at your preferred time
+
+#### Option 2: GitHub Actions + pg_dump
+This method provides a true native `pg_dump` backup including schema, indexes, constraints, and functions. It requires a working GitHub Actions account.
+
+**Files:**
+- `.github/workflows/database-backup.yml` - Scheduled workflow that runs daily at 02:00 AM (Thailand time) or when triggered from the web app
+- `scripts/upload-backup.py` - Python script that uploads the compressed backup to Supabase Storage
+- `supabase/functions/trigger-database-backup/index.ts` - Edge Function that triggers the backup from the web app
+
+**Required GitHub Secrets:**
 - `SUPABASE_URL` - Project URL
 - `SUPABASE_SERVICE_ROLE_KEY` - Service role key (for uploading to Storage)
 - `SUPABASE_DB_URL` - PostgreSQL connection string for `pg_dump`
@@ -846,30 +884,17 @@ In addition to the in-app JSON backup/restore, the project includes an automated
 - `GITHUB_REPO_OWNER` - GitHub username or organization that owns the repo
 - `GITHUB_REPO_NAME` - Repository name
 
-**Setup:**
-1. Run `sql/create-backups-bucket.sql` in the Supabase SQL Editor
-2. Add the required secrets in GitHub repository settings
-3. Create a GitHub PAT and set it as Supabase Edge Function secrets:
-   ```bash
-   supabase secrets set GITHUB_PAT=ghp_xxx
-   supabase secrets set GITHUB_REPO_OWNER=your-username
-   supabase secrets set GITHUB_REPO_NAME=gas-station-shift-manager
-   ```
-4. Deploy the Edge Function:
-   ```bash
-   supabase functions deploy trigger-database-backup
-   ```
-5. The workflow runs automatically every day, can be triggered manually from the Actions tab, or from the Settings page in the app
-
 **Restore from a database backup:**
 ```bash
-# Download the .gz file from Supabase Storage or GitHub Actions artifacts
+# For GitHub Actions pg_dump backup
 gunzip gasstation-backup-YYYYmmdd-HHMMSS.sql.gz
-# Restore to the database
 psql "${SUPABASE_DB_URL}" < gasstation-backup-YYYYmmdd-HHMMSS.sql
+
+# For Edge Function logical backup
+psql "${SUPABASE_DB_URL}" < logical-backup-YYYY-MM-DD-HH-mm-ss.sql
 ```
 
-**Note:** This backup contains the full database schema and data (including indexes, constraints, and functions), unlike the in-app JSON backup which only exports selected table rows.
+**Note:** The GitHub Actions backup contains the full database schema and data (including indexes, constraints, and functions). The Edge Function logical backup contains data only as INSERT statements and assumes the schema already exists.
 
 ## Common Development Tasks
 
