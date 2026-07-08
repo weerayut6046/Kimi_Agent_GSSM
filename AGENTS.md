@@ -20,7 +20,7 @@ A web-based shift management system for gas stations built with React, TypeScrip
 - Dashboard with statistics and reports
 - Monthly/yearly accounting reports with charts (fuel sales, cash trends, difference analysis)
 - Settings for shift, position, and skill management
-- **Database Backup & Restore (Admin only)** - Export/import selected tables as JSON file
+- **Database Backup & Restore (Admin only)** - Export/import selected tables as JSON file + database-level SQL backup to Supabase Storage with admin/manager notifications
 - **Payroll System** - Payroll period management, salary calculation, and payroll records
 - **Audit Trail** - Track all create/update/delete operations with user attribution
 - **Dashboard Analytics** - Stock prediction, sales trends, attendance analytics
@@ -826,15 +826,17 @@ This is the default backup method triggered from the Settings page. It runs enti
 
 **Files:**
 - `supabase/functions/backup-database/index.ts` - Edge Function that queries all tables and generates SQL INSERT statements
-- `sql/create-backups-bucket.sql` - SQL to create the private `backups` Storage bucket
+- `sql/create-backups-bucket.sql` - SQL to create the private `backups` Storage bucket (optional; the function also auto-creates the bucket)
 - `src/lib/api.ts` - Frontend API client with `backupApi.triggerDatabaseBackup()`
 - `src/pages/Settings.tsx` - UI button for admin users to trigger the backup
 
 **What it does:**
-1. Queries data from all major tables using the service role key
-2. Generates a `.sql` file with `TRUNCATE` and `INSERT` statements
-3. Uploads the `.sql` file to the Supabase Storage bucket `backups`
-4. Can be triggered manually from the Settings page or automatically via cron-job.org
+1. Validates the user JWT (admin/manager) or `x-backup-secret` (cron jobs)
+2. Queries data from all major tables using the service role key
+3. Generates a `.sql` file with `TRUNCATE` and `INSERT` statements
+4. Creates the `backups` Storage bucket if it does not exist and uploads the `.sql` file
+5. Sends a success notification to all admin/manager users
+6. Can be triggered manually from the Settings page or automatically via cron-job.org
 
 **Required Supabase Edge Function Secrets:**
 - `SUPABASE_URL` - Project URL
@@ -842,16 +844,16 @@ This is the default backup method triggered from the Settings page. It runs enti
 - `BACKUP_SECRET_KEY` - Random secret key for cron job authentication
 
 **Setup:**
-1. Run `sql/create-backups-bucket.sql` in the Supabase SQL Editor
+1. (Optional) Run `sql/create-backups-bucket.sql` in the Supabase SQL Editor, or let the Edge Function create the bucket automatically on first run
 2. Set the required Supabase secrets:
    ```bash
    supabase secrets set SUPABASE_URL=https://your-project.supabase.co
    supabase secrets set SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
    supabase secrets set BACKUP_SECRET_KEY=your-random-secret-key
    ```
-3. Deploy the Edge Function:
+3. Deploy the Edge Function with JWT verification disabled so cron jobs can call it directly:
    ```bash
-   supabase functions deploy backup-database
+   supabase functions deploy backup-database --no-verify-jwt
    ```
 
 **Automated scheduling with cron-job.org:**
@@ -862,12 +864,16 @@ This is the default backup method triggered from the Settings page. It runs enti
    ```
 3. Method: `POST`
 4. Headers:
-   - `Authorization: Bearer <ignored>`
+   - `Content-Type: application/json`
    - `x-backup-secret: your-random-secret-key`
-5. Schedule: daily at your preferred time
+5. Body: empty or `{}`
+6. Schedule: daily at your preferred time (e.g., 02:00 Thailand time)
+7. Notifications: all admin/manager users will receive a realtime notification after each successful backup
 
-#### Option 2: GitHub Actions + pg_dump
+#### Option 2: GitHub Actions + pg_dump (Paused)
 This method provides a true native `pg_dump` backup including schema, indexes, constraints, and functions. It requires a working GitHub Actions account.
+
+**Status:** Currently paused because the GitHub account is locked due to a billing issue. The workflow will resume automatically once the billing lock is resolved.
 
 **Files:**
 - `.github/workflows/database-backup.yml` - Scheduled workflow that runs daily at 02:00 AM (Thailand time) or when triggered from the web app

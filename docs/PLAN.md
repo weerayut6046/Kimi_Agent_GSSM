@@ -1,7 +1,7 @@
 # แผนพัฒนาและติดตามงาน — Gas Station Shift Manager
 
 > เอกสารนี้ใช้ติดตามสถานะการพัฒนาระบบและวางแผนงานในอนาคต
-> อัปเดตล่าสุด: มิถุนายน 2568
+> อัปเดตล่าสุด: กรกฎาคม 2568
 
 ---
 
@@ -23,7 +23,7 @@
 - [x] **ระบบคลังสินค้าและน้ำมัน** — สต็อกน้ำมัน, สินค้า, ซัพพลายเออร์, แจ้งเตือนสต็อกต่ำ
 - [x] **POS System** — ขายหน้าร้าน (น้ำมัน, สินค้า), หลายวิธีชำระเงิน, ตัดสต็อกอัตโนมัติ
 - [x] **Offline-First Architecture** — ทำงานได้แม้ไม่มีเน็ต, IndexedDB, Service Worker, Auto-sync
-- [x] **ระบบสำรองและกู้คืนข้อมูล** — เลือกตารางได้ รองรับ 19 ตาราง
+- [x] **ระบบสำรองและกู้คืนข้อมูล** — เลือกตารางได้ รองรับ 22 ตาราง พร้อมระบบสำรองฐานข้อมูลระดับ DB ผ่าน Supabase Edge Function
 - [x] **ระบบแจ้งเตือนจริง** — Supabase-backed, auto-trigger, badge, dropdown
 - [x] **Mobile-First Responsive** — Hamburger sidebar, touch-friendly, card layouts
 - [x] **Supabase Auth Integration** — ย้ายจาก localStorage มาใช้ Supabase Auth
@@ -40,6 +40,14 @@
 - [x] **Staggered Context Loading** - โหลด context ทีละตัวแทน Promise.all พร้อมกัน
 - [x] **Query Timeouts** - Timeout 1.5-2s บนทุก storage query ป้องกันการค้าง
 - [x] **Database Index Optimization** - `idx_users_authuid`, `idx_users_email` และอื่นๆ
+
+### กรกฎาคม 2568
+- [x] **ระบบสำรองฐานข้อมูลระดับ DB** — Supabase Edge Function `backup-database`
+  - สำรอง 22 ตารางหลักเป็น SQL INSERT statements บันทึกลง Supabase Storage bucket `backups`
+  - รองรับการเรียกจากหน้า Settings และ cron-job.org อัตโนมัติ
+  - สร้าง Storage bucket อัตโนมัติถ้ายังไม่มี
+  - ส่งการแจ้งเตือน success ให้ Admin/Manager ทุกคนหลังสำรองสำเร็จ
+- [x] **GitHub Actions Native Backup** — Workflow `database-backup.yml` สำหรับ `pg_dump` (paused เนื่องจาก GitHub billing lock)
 
 ---
 

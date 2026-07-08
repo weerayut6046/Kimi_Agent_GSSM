@@ -646,6 +646,28 @@ B10 = 0 × 36.95 = 0 บาท
 - **สำรองเฉพาะบัญชี**: เลือก daily_accounting, fuel_prices
 - **ย้ายข้อมูลไปเซิร์ฟเวอร์ใหม่**: เลือกทั้งหมด แล้วกู้คืนทั้งหมด
 
+**การสำรองฐานข้อมูลระดับ DB (Database-Level Backup):**
+สิทธิ์: **Admin เท่านั้น**
+
+1. ไปที่ "ตั้งค่า" → "สำรองและกู้คืนข้อมูล"
+2. คลิกปุ่ม "สำรองฐานข้อมูล (pg_dump)"
+3. ระบบจะสำรองข้อมูล 22 ตารางหลักเป็นไฟล์ SQL (`TRUNCATE` + `INSERT`)
+4. ไฟล์จะถูกอัปโหลดไปยัง Supabase Storage bucket `backups` โดยอัตโนมัติ
+5. Admin/Manager ทุกคนจะได้รับการแจ้งเตือนแบบ Real-time เมื่อสำรองสำเร็จ
+6. ดาวน์โหลดไฟล์ได้จาก Supabase Dashboard → Storage → `backups`
+
+**ตั้งค่าสำรองอัตโนมัติด้วย cron-job.org:**
+1. สมัครและเข้าสู่ระบบที่ https://cron-job.org
+2. สร้าง cron job ใหม่:
+   - **URL:** `https://your-project.supabase.co/functions/v1/backup-database`
+   - **Method:** `POST`
+   - **Headers:**
+     - `Content-Type: application/json`
+     - `x-backup-secret: your-random-secret-key`
+   - **Body:** ว่างหรือ `{}`
+3. กำหนดตารางเวลา เช่น 02:00 น. ทุกวัน (ตามเวลาไทย)
+4. ทุกครั้งที่สำรองสำเร็จ Admin/Manager จะได้รับการแจ้งเตือนในแอป
+
 ### 8. ระบบโปรโมชั่น (Promotions)
 
 > **สิทธิ์:** Admin, Manager เท่านั้น

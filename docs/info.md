@@ -260,6 +260,15 @@ npm run lint     # Lint code
 
 ## Recent Updates
 
+### กรกฎาคม 2026
+- **Database-Level Backup (Edge Function)** - `supabase/functions/backup-database/index.ts`
+  - Queries 22 main tables and generates a SQL dump (`TRUNCATE` + `INSERT`)
+  - Uploads the `.sql` file to the private Supabase Storage bucket `backups`
+  - Auto-creates the `backups` bucket if it does not exist
+  - Can be triggered manually from the Settings page or automatically via cron-job.org
+  - Sends a success notification to all admin/manager users after each backup
+- **GitHub Actions Native Backup** - `.github/workflows/database-backup.yml` created for native `pg_dump` backups, currently paused due to GitHub account billing lock
+
 ### มิถุนายน 2026
 - **Multi-Station/Branch Filtering** - Complete multi-branch support
   - `AuthContext` auto-sets `currentStation` from profile on login
@@ -276,7 +285,7 @@ npm run lint     # Lint code
 - **POS System** - Full Point of Sale with fuel sales (by amount/liters), product sales, multiple payment methods (Cash, Card, QR, E-Wallet), change calculation, and auto stock deduction.
 - **Inventory Management System** - Complete inventory system with fuel stock tracking, shop products, and supplier management (new tables: fuel_inventory, fuel_deliveries, products, product_transactions, suppliers)
 - **Export Excel & PDF (Client-side)** - Generate reports and receipts directly in the browser using `xlsx` and `jspdf` with Thai font (`THSarabunNew.ttf`) support. Works offline without server-side Edge Functions.
-- **Database Backup & Restore** - Admin can export selected tables to JSON file and restore specific tables from backup. Supports 21 tables with dependency-aware restore order.
+- **Database Backup & Restore** - Admin can export selected tables to JSON file and restore specific tables from backup. Supports 22 tables with dependency-aware restore order.
 - **Real-time Supabase Subscriptions** - Auto-update all data when any table changes via Supabase Realtime (postgres_changes). Covers 20+ tables across 11 Contexts with debounce, cache invalidation, and toast notifications.
 - **Debug Console.log Cleanup** - Removed all debug console.log statements from production code
 - **Real-time Supabase Subscriptions** - Complete realtime integration for all tables via Supabase Realtime. Includes `src/lib/realtime.ts` utility, `src/hooks/useRealtime.ts` hooks, and subscriptions in all 11 Contexts. Features debounce (800ms), cache invalidation, auto-reload, and toast notifications for new data.
