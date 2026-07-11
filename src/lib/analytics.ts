@@ -500,19 +500,10 @@ function sevenDaysAgoStr(): string {
   return d.toISOString().split('T')[0];
 }
 
-function getPrevPeriodStart(startDate: string, endDate: string): string {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-  const prevStart = new Date(start);
-  prevStart.setDate(prevStart.getDate() - diffDays - 1);
-  return prevStart.toISOString().split('T')[0];
-}
-
 /**
  * สถิติสรุปสำหรับ Dashboard
  */
-export async function getDashboardAnalytics(startDate?: string, endDate?: string): Promise<DashboardAnalytics> {
+export async function getDashboardAnalytics(): Promise<DashboardAnalytics> {
   const result: DashboardAnalytics = {
     salesChangePercent: 0,
     avgDailySales: 0,
@@ -521,54 +512,98 @@ export async function getDashboardAnalytics(startDate?: string, endDate?: string
   };
 
   try {
-    // Default to today/7 days if no range provided
     const today = new Date().toISOString().split('T')[0];
+    const weekAgo = sevenDaysAgoStr();
 
-    const rangeStart = startDate || sevenDaysAgoStr();
-    const rangeEnd = endDate || today;
-    const prevRangeStart = getPrevPeriodStart(rangeStart, rangeEnd);
-    const prevRangeEnd = rangeStart;
+    // Sales change: compare the most recent day with data vs the previous day with data
+    const lookbackDays = 30;
+    const lookbackStart = new Date();
+    lookbackStart.setDate(lookbackStart.getDate() - lookbackDays);
+    const lookbackStartStr = lookbackStart.toISOString().split('T')[0];
 
-    // Sales change (current period vs previous period)
-    const { data: currentSales } = await supabase
-      .from('daily_accounting')
-      .select('totalamount')
-      .gte('date', rangeStart)
-      .lte('date', rangeEnd);
+    // POS sales totals by date
+    const { data: posSalesRange } = await supabase
+      .from('sales')
+      .select('date, total')
+      .eq('status', 'completed')
+      .gte('date', lookbackStartStr)
+      .lte('date', today);
 
-    const { data: prevSales } = await supabase
-      .from('daily_accounting')
-      .select('totalamount')
-      .gte('date', prevRangeStart)
-      .lte('date', prevRangeEnd);
-
-    const currentTotal = (currentSales || []).reduce((sum, r) => sum + Number(r.totalamount || 0), 0);
-    const prevTotal = (prevSales || []).reduce((sum, r) => sum + Number(r.totalamount || 0), 0);
-
-    if (prevTotal > 0) {
-      result.salesChangePercent = Math.round(((currentTotal - prevTotal) / prevTotal) * 100);
+    const posByDate: Record<string, number> = {};
+    for (const sale of posSalesRange || []) {
+      const date = sale.date as string;
+      posByDate[date] = (posByDate[date] || 0) + Number(sale.total || 0);
     }
 
-    // Average daily sales (selected range)
-    const { data: rangeSales } = await supabase
+    // Daily accounting totals by date
+    const { data: accountingRange } = await supabase
       .from('daily_accounting')
-      .select('totalamount')
-      .gte('date', rangeStart)
-      .lte('date', rangeEnd);
+      .select('date, totalamount')
+      .eq('isdeleted', false)
+      .gte('date', lookbackStartStr)
+      .lte('date', today);
 
-    const rangeTotal = (rangeSales || []).reduce((sum, r) => sum + Number(r.totalamount || 0), 0);
-    const daysCount = rangeSales && rangeSales.length > 0 ? rangeSales.length : 1;
-    result.avgDailySales = Math.round(rangeTotal / daysCount);
+    const accountingByDate: Record<string, number> = {};
+    for (const row of accountingRange || []) {
+      const date = row.date as string;
+      accountingByDate[date] = (accountingByDate[date] || 0) + Number(row.totalamount || 0);
+    }
 
-    // Best selling fuel (selected range)
-    const { data: rangeAccounting } = await supabase
+    // Combine: prefer POS if available, otherwise daily_accounting
+    const allDates = new Set([...Object.keys(posByDate), ...Object.keys(accountingByDate)]);
+    const dailyTotals = Array.from(allDates)
+      .map((date) => {
+        const posTotal = posByDate[date] || 0;
+        const accountingTotal = accountingByDate[date] || 0;
+        return {
+          date,
+          total: posTotal > 0 ? posTotal : accountingTotal,
+        };
+      })
+      .filter((d) => d.total > 0)
+      .sort((a, b) => (a.date > b.date ? -1 : 1));
+
+    if (dailyTotals.length >= 2) {
+      const latest = dailyTotals[0];
+      const previous = dailyTotals[1];
+      result.salesChangePercent = Math.round(((latest.total - previous.total) / previous.total) * 100);
+    }
+
+    // Average daily sales: last 7 days (use POS sales first, fallback to daily_accounting)
+    const { data: weekPosSales } = await supabase
+      .from('sales')
+      .select('total')
+      .eq('status', 'completed')
+      .gte('date', weekAgo)
+      .lte('date', today);
+
+    const weekPosTotal = (weekPosSales || []).reduce((sum, r) => sum + Number(r.total || 0), 0);
+
+    if (weekPosSales && weekPosSales.length > 0) {
+      result.avgDailySales = Math.round(weekPosTotal / 7);
+    } else {
+      const { data: weekSales } = await supabase
+        .from('daily_accounting')
+        .select('totalamount')
+        .eq('isdeleted', false)
+        .gte('date', weekAgo)
+        .lte('date', today);
+
+      const weekTotal = (weekSales || []).reduce((sum, r) => sum + Number(r.totalamount || 0), 0);
+      const daysCount = weekSales && weekSales.length > 0 ? weekSales.length : 1;
+      result.avgDailySales = Math.round(weekTotal / daysCount);
+    }
+
+    // Best selling fuel: last 7 days (from daily_accounting fuel sales)
+    const { data: weekAccounting } = await supabase
       .from('daily_accounting')
       .select('*')
-      .gte('date', rangeStart)
-      .lte('date', rangeEnd);
+      .eq('isdeleted', false)
+      .gte('date', weekAgo)
+      .lte('date', today);
 
     const fuelTotals: Record<string, number> = { '95': 0, 'B7': 0, 'B10': 0, 'Diesel': 0 };
-    for (const row of rangeAccounting || []) {
+    for (const row of weekAccounting || []) {
       const fuelSales = row.fuelsales || row.fuel_sales || {};
       for (const [key, value] of Object.entries(fuelSales)) {
         fuelTotals[key] = (fuelTotals[key] || 0) + Number(value || 0);
@@ -580,21 +615,21 @@ export async function getDashboardAnalytics(startDate?: string, endDate?: string
       result.bestSellingFuel = `น้ำมัน ${bestFuel[0]}`;
     }
 
-    // Attendance rate (selected range - last day of range)
-    const { data: endDateSchedules } = await supabase
+    // Attendance rate: today
+    const { data: todaySchedules } = await supabase
       .from('schedules')
       .select('id')
-      .eq('date', rangeEnd);
+      .eq('date', today);
 
-    const scheduleIds = (endDateSchedules || []).map((s) => s.id);
+    const scheduleIds = (todaySchedules || []).map((s) => s.id);
     if (scheduleIds.length > 0) {
-      const { data: endDateAttendances } = await supabase
+      const { data: todayAttendances } = await supabase
         .from('attendances')
         .select('status')
         .in('scheduleid', scheduleIds);
 
-      const total = endDateAttendances?.length || 0;
-      const present = endDateAttendances?.filter((a: { status: string }) => a.status === 'normal' || a.status === 'late').length || 0;
+      const total = todayAttendances?.length || 0;
+      const present = todayAttendances?.filter((a: { status: string }) => a.status === 'normal' || a.status === 'late').length || 0;
       result.attendanceRateToday = total > 0 ? Math.round((present / total) * 100) : 0;
     }
   } catch (err) {

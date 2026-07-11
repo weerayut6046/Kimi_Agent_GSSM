@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Users, Calendar, FileText, Repeat, Clock, AlertCircle, TrendingUp, DollarSign, Fuel, Activity } from 'lucide-react';
+import { Users, Calendar, FileText, Repeat, Clock, AlertCircle, TrendingUp, TrendingDown, DollarSign, Fuel, Activity } from 'lucide-react';
 import Header from '@/components/layout/Header';
 import AlertBanner from '@/components/common/AlertBanner';
 import StatCard from '@/components/common/StatCard';
@@ -44,11 +44,11 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     const load = async () => {
-      const data = await getDashboardAnalytics(dateRange.from, dateRange.to);
+      const data = await getDashboardAnalytics();
       setAnalytics(data);
     };
     load();
-  }, [dateRange]);
+  }, []);
 
   // Auto-check alert rules on mount (admin/manager only)
   useEffect(() => {
@@ -166,8 +166,8 @@ const Dashboard: React.FC = () => {
             <StatCard
               title="เปลี่ยนแปลงยอดขาย"
               value={`${analytics.salesChangePercent > 0 ? '+' : ''}${analytics.salesChangePercent}%`}
-              description="เทียบกับเมื่อวาน"
-              icon={analytics.salesChangePercent >= 0 ? TrendingUp : TrendingUp}
+              description="เทียบกับวันก่อนหน้าที่มีข้อมูล"
+              icon={analytics.salesChangePercent >= 0 ? TrendingUp : TrendingDown}
               color={analytics.salesChangePercent >= 0 ? 'green' : 'red'}
             />
             <StatCard
